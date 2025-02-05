@@ -1,11 +1,38 @@
+import transformers
+from transformers import AutoTokenizer, AutoModelForTokenClassification
 import os
-from transformers import AutoModelForCausalLM, AutoTokenizer
+import json
+from dotenv import load_dotenv
 
-# Load the NuExtract model and tokenizer
-model_name = "numind/NuExtract-v1.5"
-tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, trust_remote_code=True).to("cuda").eval()
+# Load environment variables from .env file
+load_dotenv()
 
+# Hugging Face credentials from .env
+HF_USERNAME = os.getenv("HF_USERNAME")
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+if not HF_USERNAME or not HF_TOKEN:
+    raise ValueError("HF_USERNAME and HF_TOKEN must be set in the .env file.")
+
+model_name = "numind/NuExtract-1.5"
+
+try:
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForTokenClassification.from_pretrained(model_name)
+    print(f"Model '{model_name}' loaded from cache.")
+
+except Exception as e:
+    print(f"Error loading from cache: {e}")
+
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=HF_TOKEN)
+        model = AutoModelForTokenClassification.from_pretrained(model_name, use_auth_token=HF_TOKEN)
+        print(f"Model '{model_name}' downloaded and loaded using authentication.")
+
+    except Exception as e2:
+        print(f"Error downloading/loading with authentication: {e2}")
+        raise
+                                             
 # Define the path to the PDFs directory
 pdf_directory = "data/pdfs"
 
