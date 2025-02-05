@@ -1,3 +1,5 @@
+# https://numind.ai/blog/nuextract-1-5---multilingual-infinite-context-still-small-and-better-than-gpt-4o
+
 import transformers
 from transformers import AutoTokenizer, AutoModelForTokenClassification
 import os
