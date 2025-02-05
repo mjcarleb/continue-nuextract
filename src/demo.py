@@ -4,6 +4,7 @@ import os
 import json
 import pymupdf as fitz  # Correct import
 from dotenv import load_dotenv
+import torch
 
 # Load environment variables from .env file
 load_dotenv()
@@ -33,7 +34,12 @@ except Exception as e:
     except Exception as e2:
         print(f"Error downloading/loading with authentication: {e2}")
         raise
-                                             
+
+max_length = tokenizer.model_max_length  # Get the model's max length
+
+chunk_size = max_length - 100 # Leave some space for special tokens
+
+
 # Define the path to the PDFs directory
 pdf_directory = "data/pdfs"
 
@@ -46,6 +52,15 @@ for page in doc:
 
 inputs = tokenizer(text, return_tensors="pt")
 
-with transformers.no_grad():
-    outputs = model(**inputs)
+with torch.no_grad():
+    all_outputs = []  # Store the outputs for each chunk
+    
+    for i in range(0, len(text), chunk_size):
+        chunk = text[i:i + chunk_size]
+        inputs = tokenizer(chunk, return_tensors="pt", truncation=True) # Truncate if necessary
+        with torch.no_grad():
+            outputs = model(**inputs)
+        all_outputs.append(outputs)  # Store current chunk's result
+    
+
     a=3
