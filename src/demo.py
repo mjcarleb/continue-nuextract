@@ -46,5 +46,6 @@ for page in doc:
 
 inputs = tokenizer(text, return_tensors="pt")
 
-with torch.no_grad():
+with transformers.no_grad():
+    outputs = model(**inputs)
     a=3
