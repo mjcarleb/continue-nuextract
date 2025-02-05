@@ -1,7 +1,7 @@
 # https://numind.ai/blog/nuextract-1-5---multilingual-infinite-context-still-small-and-better-than-gpt-4o
 
 import transformers
-from transformers import AutoTokenizer, AutoModelForTokenClassification
+from transformers import AutoTokenizer, AutoModelForCausalLM
 import os
 import json
 import pymupdf as fitz  # Correct import
@@ -36,53 +36,45 @@ else:
 #####################
 # FUNCTIONS
 #####################
-# Function to convert token IDs to text (Improved)
-def tokens_to_text(input_ids, attention_mask):
-    """
-    Converts token IDs to text, handling special tokens and padding.
+def predict_NuExtract(model, tokenizer, texts, template, batch_size=1, max_length=10_000, max_new_tokens=4_000):
+    template = json.dumps(json.loads(template), indent=4)
+    prompts = [f"""<|input|>\n### Template:\n{template}\n### Text:\n{text}\n\n<|output|>""" for text in texts]
+    
+    outputs = []
+    with torch.no_grad():
+        for i in range(0, len(prompts), batch_size):
+            batch_prompts = prompts[i:i+batch_size]
+            batch_encodings = tokenizer(batch_prompts, return_tensors="pt", truncation=True, padding=True, max_length=max_length).to(model.device)
 
-    Args:
-        input_ids: A tensor of token IDs.
-        attention_mask: A tensor indicating which tokens are real (1) and which are padding (0).
+            pred_ids = model.generate(**batch_encodings, max_new_tokens=max_new_tokens)
+            outputs += tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
 
-    Returns:
-        A list of strings, where each string is the decoded text for a sequence in the batch.
-    """
-
-    decoded_texts = []
-    for i in range(input_ids.shape[0]):  # Iterate through batches if applicable
-        # Extract token IDs and attention mask for the current sequence
-        sequence_ids = input_ids[i]
-        sequence_mask = attention_mask[i]
-
-        # Apply attention mask to ignore padding
-        valid_indices = sequence_mask.nonzero(as_tuple=False).squeeze() # Get indices of valid tokens
-        valid_ids = sequence_ids[valid_indices]
-
-        # Decode the valid token IDs
-        decoded_text = tokenizer.decode(valid_ids, skip_special_tokens=True) # Skip special tokens like [CLS], [SEP], [PAD]
-        decoded_texts.append(decoded_text)
-
-    return decoded_texts
+    return [output.split("<|output|>")[1] for output in outputs]
 
 if __name__ == "__main__":
     model_name = "numind/NuExtract-1.5"
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForTokenClassification.from_pretrained(model_name)
-        print(f"Model '{model_name}' loaded from cache.")
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True,
+                                                    use_auth_token=HF_TOKEN,
+                                                    device=device)
+        model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                        use_auth_token=HF_TOKEN,
+                                                        torch_dtype=torch.bfloat16, 
+                                                        trust_remote_code=True).to(device).eval()
 
     except Exception as e:
         print(f"Error loading from cache: {e}")
 
         try:
-            tokenizer = AutoTokenizer.from_pretrained(model_name, 
+            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True,
                                                       use_auth_token=HF_TOKEN,
                                                       device=device)
-            model = AutoModelForTokenClassification.from_pretrained(model_name, 
-                                                                    use_auth_token=HF_TOKEN,
-                                                                    device=device)
+            model = AutoModelForCausalLM.from_pretrained(model_name, 
+                                                         use_auth_token=HF_TOKEN,
+                                                         torch_dtype=torch.bfloat16, 
+                                                         trust_remote_code=True).to(device).eval()
+            
             print(f"Model '{model_name}' downloaded and loaded using authentication.")
 
         except Exception as e2:
@@ -104,43 +96,15 @@ if __name__ == "__main__":
     for page in doc:
         text += page.get_text()
 
-    inputs = tokenizer(text, return_tensors="pt")
+    text = text[:1000]
 
-    all_inputs = []
-    all_outputs = []  # Store the outputs for each chunk
-        
-    for i in range(0, len(text), chunk_size):
-        chunk = text[i:i + chunk_size]
-        inputs = tokenizer(chunk, return_tensors="pt", truncation=True) # Truncate if necessary
-        all_inputs.append(inputs)
-        with torch.no_grad():
-            outputs = model(**inputs)
-        all_outputs.append(outputs)  # Store current chunk's result
-        if i > 1000:
-            break
-
-
-    all_predicted_texts = []
-
-    for i, outputs in enumerate(all_outputs):  # Get the index 'i' as well
-        logits = outputs.logits
-        predictions = torch.argmax(logits, dim=-1)
-
-        predicted_chunk_texts = []
-        for j in range(predictions.shape[0]): # Loop through each sequence in the batch
-            current_prediction = predictions[j]
-            # *** KEY CHANGE: Access input_ids from the original 'inputs'
-            current_input_ids = all_inputs[i].input_ids[j] # Get the input_ids for the current batch and sequence
-            tokens = tokenizer.convert_ids_to_tokens(current_input_ids)
-            decoded_text = ""
-            for token_index, token in enumerate(tokens):
-                if token not in tokenizer.special_tokens_map.values():
-                    decoded_text += token.lstrip("##")
-                    if token_index < len(current_prediction): # Check if the current token has a corresponding label prediction
-                        label_id = current_prediction[token_index].item()
-                        label = model.config.id2label[label_id]
-                        decoded_text += f"[{label}]"
-            predicted_chunk_texts.append(decoded_text)
-        all_predicted_texts.extend(predicted_chunk_texts)
-
-    print(all_predicted_texts)
+    template = """{
+        "Company": {
+            "Name":  "",
+            "Year":  "",
+            "Revenue":  ""
+        }
+    }"""
+    
+    prediction = predict_NuExtract(model, tokenizer, [text], template)[0]
+    print(prediction)
