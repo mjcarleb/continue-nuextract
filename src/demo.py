@@ -6,6 +6,9 @@ import pymupdf as fitz  # Correct import
 from dotenv import load_dotenv
 import torch
 
+#####################
+# ENVIRONMENT
+#####################
 # Load environment variables from .env file
 load_dotenv()
 
@@ -13,9 +16,20 @@ load_dotenv()
 HF_USERNAME = os.getenv("HF_USERNAME")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
+
 if not HF_USERNAME or not HF_TOKEN:
     raise ValueError("HF_USERNAME and HF_TOKEN must be set in the .env file.")
 
+#####################
+# GPU
+#####################
+# Check if MPS is available
+if torch.backends.mps.is_available():
+    device = torch.device("mps")  # Use MPS device
+    print("MPS device found and will be used.")
+else:
+    device = torch.device("cpu") # Fallback to CPU
+    print("MPS device not found. Using CPU.")
 
 #####################
 # FUNCTIONS
@@ -61,8 +75,12 @@ if __name__ == "__main__":
         print(f"Error loading from cache: {e}")
 
         try:
-            tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=HF_TOKEN)
-            model = AutoModelForTokenClassification.from_pretrained(model_name, use_auth_token=HF_TOKEN)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, 
+                                                      use_auth_token=HF_TOKEN,
+                                                      device=device)
+            model = AutoModelForTokenClassification.from_pretrained(model_name, 
+                                                                    use_auth_token=HF_TOKEN,
+                                                                    device=device)
             print(f"Model '{model_name}' downloaded and loaded using authentication.")
 
         except Exception as e2:
@@ -86,11 +104,13 @@ if __name__ == "__main__":
 
     inputs = tokenizer(text, return_tensors="pt")
 
+    all_inputs = []
     all_outputs = []  # Store the outputs for each chunk
         
     for i in range(0, len(text), chunk_size):
         chunk = text[i:i + chunk_size]
         inputs = tokenizer(chunk, return_tensors="pt", truncation=True) # Truncate if necessary
+        all_inputs.append(inputs)
         with torch.no_grad():
             outputs = model(**inputs)
         all_outputs.append(outputs)  # Store current chunk's result
