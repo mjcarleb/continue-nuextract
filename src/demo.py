@@ -37,7 +37,7 @@ except Exception as e:
 
 max_length = tokenizer.model_max_length  # Get the model's max length
 
-chunk_size = max_length - 100 # Leave some space for special tokens
+chunk_size = 2000 # Leave some space for special tokens
 
 
 # Define the path to the PDFs directory
@@ -52,15 +52,14 @@ for page in doc:
 
 inputs = tokenizer(text, return_tensors="pt")
 
-with torch.no_grad():
-    all_outputs = []  # Store the outputs for each chunk
+all_outputs = []  # Store the outputs for each chunk
     
-    for i in range(0, len(text), chunk_size):
-        chunk = text[i:i + chunk_size]
-        inputs = tokenizer(chunk, return_tensors="pt", truncation=True) # Truncate if necessary
-        with torch.no_grad():
-            outputs = model(**inputs)
-        all_outputs.append(outputs)  # Store current chunk's result
+for i in range(0, len(text), chunk_size):
+    chunk = text[i:i + chunk_size]
+    inputs = tokenizer(chunk, return_tensors="pt", truncation=True) # Truncate if necessary
+    with torch.no_grad():
+        outputs = model(**inputs)
+    all_outputs.append(outputs)  # Store current chunk's result
     
 
     a=3
